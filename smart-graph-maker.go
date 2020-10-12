@@ -4,8 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	driver "github.com/arangodb/go-driver"
-	"github.com/arangodb/go-driver/http"
+	"github.com/neunhoef/smart-graph-maker/pkg/database"
 	"math/rand"
 	"os"
 	"sort"
@@ -13,12 +12,16 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/arangodb/go-driver"
+	"github.com/arangodb/go-driver/http"
+	"github.com/neunhoef/smart-graph-maker/cmd"
 )
 
 // setup will set up a disjoint smart graph, if the smart graph is already
 // there, it will not complain.
 func setup(drop bool, db driver.Database) error {
-	sg, err := db.Graph(nil, "G")
+	sg, err := db.Graph(nil, "Graph")
 	if err == nil {
 		if !drop {
 			fmt.Printf("Found smart graph already, setup is already done.\n")
@@ -85,15 +88,6 @@ type Step struct {
 	Payload  string `json:"payload"` // approx length 700 bytes
 }
 
-func makeRandomString(length int) string {
-	b := make([]byte, length, length)
-	for i := 0; i < length; i++ {
-		s := rand.Int()%90 + 33
-		b[i] = byte(s)
-	}
-	return string(b)
-}
-
 // writeOneTenant writes `nrPaths` short paths into the smart graph for
 // tenant with id `tenantId`.
 func writeOneTenant(nrPaths int, tenantId string, db driver.Database) error {
@@ -114,34 +108,34 @@ func writeOneTenant(nrPaths int, tenantId string, db driver.Database) error {
 		in1 := Instance{
 			Key:      tenantId + ":K" + n,
 			TenantId: tenantId,
-			Payload:  makeRandomString(1400),
+			Payload:  database.MakeRandomString(1400),
 		}
 		in2 := Instance{
 			Key:      tenantId + ":L" + n,
 			TenantId: tenantId,
-			Payload:  makeRandomString(1400),
+			Payload:  database.MakeRandomString(1400),
 		}
 		in3 := Instance{
 			Key:      tenantId + ":M" + n,
 			TenantId: tenantId,
-			Payload:  makeRandomString(1400),
+			Payload:  database.MakeRandomString(1400),
 		}
 		st1 := Step{
 			TenantId: tenantId,
 			From:     "instances/" + tenantId + ":K" + n,
 			To:       "instances/" + tenantId + ":L" + n,
-			Payload:  makeRandomString(700),
+			Payload:  database.MakeRandomString(700),
 		}
 		st2 := Step{
 			TenantId: tenantId,
 			From:     "instances/" + tenantId + ":L" + n,
 			To:       "instances/" + tenantId + ":M" + n,
-			Payload:  makeRandomString(700),
+			Payload:  database.MakeRandomString(700),
 		}
 		ins = append(ins, in1, in2, in3)
 		sts = append(sts, st1, st2)
 		if len(ins) >= 3000 || i == nrPaths {
-      ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 			_, _, err := instances.CreateDocuments(ctx, ins)
 			if err != nil {
 				fmt.Printf("writeOneTenant: could not write instances: %v\n", err)
@@ -248,7 +242,7 @@ func runRandomTest(db driver.Database, runTimeSeconds int,
 			cursor.Close()
 			times = append(times, time.Now().Sub(start))
 			if count != 1 {
-					fmt.Printf("Got wrong count: %d, key: %s, query: %s\n", count, startVertex, query)
+				fmt.Printf("Got wrong count: %d, key: %s, query: %s\n", count, startVertex, query)
 			}
 			cursor.Close()
 		}
@@ -279,6 +273,15 @@ var (
 )
 
 func main() {
+	fmt.Print("Hello world!\n")
+	rand.Seed(time.Now().UnixNano())
+	if err := cmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
+
+func main1() {
 	fmt.Print("Hello world!\n")
 
 	flag.BoolVar(&drop, "drop", drop, "set -drop to true to drop data before start")
