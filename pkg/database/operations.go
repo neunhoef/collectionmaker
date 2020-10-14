@@ -18,12 +18,13 @@ func IsNameSystemReserved(name string) bool {
 }
 
 // CreateOrGetDatabase returns handle to a database. If database does not exist then it is created.
-func CreateOrGetDatabase(ctx context.Context, client driver.Client, DBName string) (driver.Database, error) {
+func CreateOrGetDatabase(ctx context.Context, client driver.Client, DBName string,
+	options *driver.CreateDatabaseOptions) (driver.Database, error) {
 	if IsNameSystemReserved(DBName) {
 		return client.Database(ctx, DBName)
 	}
 
-	handle, err := client.CreateDatabase(ctx, DBName, nil)
+	handle, err := client.CreateDatabase(ctx, DBName, options)
 	if err != nil {
 		if driver.IsConflict(err) {
 			return client.Database(ctx, DBName)

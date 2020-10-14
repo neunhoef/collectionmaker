@@ -98,7 +98,9 @@ func (c Collection) GetMetrics() (int64, int64) {
 }
 
 // CreateDatabases creates databases according to the source input.
-func (s *DatabaseMetaData) CreateDatabases(ctx context.Context, client driver.Client) error {
+func (s *DatabaseMetaData) CreateDatabases(ctx context.Context, client driver.Client,
+	options *driver.CreateDatabaseOptions) error {
+
 	var DBHandle driver.Database
 	var colHandle driver.Collection
 	var err error
@@ -108,7 +110,7 @@ func (s *DatabaseMetaData) CreateDatabases(ctx context.Context, client driver.Cl
 	}
 
 	for DBName, d := range s.databases {
-		DBHandle, err = database.CreateOrGetDatabase(ctx, client, DBName)
+		DBHandle, err = database.CreateOrGetDatabase(ctx, client, DBName, options)
 		if err != nil {
 			return err
 		}

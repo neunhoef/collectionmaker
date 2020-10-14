@@ -46,7 +46,7 @@ func createCollection(cmd *cobra.Command, _ []string) error {
 		return errors.New("file with the count should be provided --countfile")
 	}
 
-	DBHandle, err := database.CreateOrGetDatabase(context.Background(), _client, DBName)
+	DBHandle, err := database.CreateOrGetDatabase(context.Background(), _client, DBName, nil)
 	if err != nil {
 		return err2.Wrap(err, "can not create/get database")
 	}
