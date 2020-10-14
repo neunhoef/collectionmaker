@@ -79,6 +79,10 @@ func NewCollectionCreator(expectedSize, expectedCount int64, documentGenerator D
 // CreateDocuments writes documents using specific document generator.
 func (c Collection) CreateDocuments(ctx context.Context) error {
 
+	if c.expectedCount == 0 || c.expectedSize == 0 {
+		return nil
+	}
+
 	if c.colHandle == nil {
 		return fmt.Errorf("collection handler can not be nil")
 	}
@@ -88,32 +92,41 @@ func (c Collection) CreateDocuments(ctx context.Context) error {
 		return err2.Wrapf(err, "con not get count of documents for a collection %s", c.colHandle.Name())
 	}
 
-	howManyDocuments := c.expectedCount - currentCount
-	if howManyDocuments <= 0 {
-		return nil
-	}
-
-	documents := make([]interface{}, 0, howManyDocuments)
 	sizeOfEachDocument := c.expectedSize / c.expectedCount
 
-	for i := 0; i < int(howManyDocuments); i++ {
-		documents = append(documents, c.documentGenerator.Add(sizeOfEachDocument))
+	for c.expectedCount-currentCount > 0 {
+		var sentSize int64
+
+		documents := make([]interface{}, 0, c.expectedCount-currentCount)
+		var i int64
+		for i = 0; i < c.expectedCount-currentCount; i++ {
+			documents = append(documents, c.documentGenerator.Add(sizeOfEachDocument))
+			sentSize += sizeOfEachDocument
+			if sentSize > 100000000 {
+				break
+			}
+		}
+
+		fmt.Printf("\r%s Count: %d/%d", c.colHandle.Name(), currentCount, c.expectedCount)
+		currentCount += int64(len(documents))
+		if _, _, err = c.colHandle.CreateDocuments(context.Background(), documents); err != nil {
+			return err2.Wrap(err, "can not write documents")
+		}
+		fmt.Printf("\r%s Count: %d/%d", c.colHandle.Name(), currentCount, c.expectedCount)
 	}
 
-	if _, _, err = c.colHandle.CreateDocuments(context.Background(), documents); err != nil {
-		return err2.Wrap(err, "can not write documents")
-	}
+	fmt.Printf("\rCollection done:%s, Count: %d\n", c.colHandle.Name(), c.expectedCount)
 
 	return nil
 }
 
-// DocumentWithOneField creates one document with one field.
-type DocumentWithOneField struct{}
-
 // DataTest is the example data with one field to write as a one document.
 type DataTest struct {
-	FirstField string `json:"h,omitempty"`
+	FirstField string `json:"a,omitempty"`
 }
+
+// DocumentWithOneField creates one document with one field.
+type DocumentWithOneField struct{}
 
 func (d DocumentWithOneField) Add(sizeOfDocument int64) interface{} {
 	return DataTest{

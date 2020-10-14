@@ -36,10 +36,7 @@ func ReadFile(filename string, d Databases, parser ParseObject) error {
 
 		currentShard, ok := d[DBName].Collections[ColName].Shards[ShardName]
 		if !ok {
-			d[DBName].Collections[ColName].Shards[ShardName] = Shard{
-				Size:  shard.Size,
-				Count: shard.Count,
-			}
+			d[DBName].Collections[ColName].Shards[ShardName] = shard
 			continue
 		}
 

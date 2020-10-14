@@ -23,8 +23,9 @@ type Collection struct {
 
 // Shard describe information about one specific shard.
 type Shard struct {
-	Size  int // Size in bytes of a shard.
-	Count int // Count od documents of a shard.
+	Size              int // Size in bytes of a shard.
+	Count             int // Count od documents of a shard.
+	ReplicationFactor int
 }
 
 // ParseObject instructs how to parse one object from the source.
@@ -117,8 +118,17 @@ func (s *DatabaseMetaData) CreateDatabases(ctx context.Context, client driver.Cl
 				continue
 			}
 
+			if len(collection.Shards) == 0 {
+				continue
+			}
+
+			replicationFactor := 0
+			for _, shard := range collection.Shards {
+				replicationFactor = shard.ReplicationFactor
+				break
+			}
 			options := driver.CreateCollectionOptions{
-				ReplicationFactor: 1, // TODO maybe we can get it somehow.
+				ReplicationFactor: replicationFactor,
 				NumberOfShards:    len(collection.Shards),
 			}
 
@@ -129,7 +139,9 @@ func (s *DatabaseMetaData) CreateDatabases(ctx context.Context, client driver.Cl
 
 			expectedSize, expectedCount := collection.GetMetrics()
 			creator := database.NewCollectionCreator(expectedSize, expectedCount, &database.DocumentWithOneField{}, colHandle)
-			return creator.CreateDocuments(context.Background())
+			if err := creator.CreateDocuments(context.Background()); err != nil {
+				return err
+			}
 		}
 	}
 
