@@ -1,12 +1,35 @@
-# collectionmaker
+# The collection maker
 Simple go tool to make a collection or smart graph with some documents.
 
-## `smart-graph-maker`
-
-Build like this:
-
+### Building:
 ```
 go build
+```
+
+##How to use help command:
+```
+Print main help:
+smart-graph-maker help
+
+Print usage for the specific command
+smart-graph-maker help [subcommand]...
+    Examples:
+    smart-graph-maker help create 
+    smart-graph-maker help create collection
+``` 
+
+##Examples:
+
+#### Create collection with the size 10000 bytes and 10 documents and with two shards
+```
+smart-graph-maker create collection --endpoint "http://localhost:8529" --collection test --shards 2 --size 10000 --count 10
+```
+
+#### Create databases and collections from the output from debug-scripts (https://github.com/arangodb/debug-scripts)
+```
+./arangodb-debug.sh show-documents collection size > size.dat
+./arangodb-debug.sh show-documents collection count > count.dat
+smart-graph-maker create debugscript --endpoint "http://localhost:8529"  --sizefile size.dat --countfile count.log
 ```
 
 The executable `smart-graph-maker` has the following options:
@@ -68,4 +91,3 @@ Then I ran tests like this:
 ```
 ./smart-graph-maker -mode=test -runTime=6000
 ```
-

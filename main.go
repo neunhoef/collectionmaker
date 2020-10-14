@@ -10,7 +10,6 @@ import (
 )
 
 func main() {
-	fmt.Print("Hello world!\n")
 	rand.Seed(time.Now().UnixNano())
 	if err := cmd.Execute(); err != nil {
 		fmt.Println(err)
