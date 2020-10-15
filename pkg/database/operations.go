@@ -113,10 +113,13 @@ func (c Collection) CreateDocuments(ctx context.Context) error {
 		if _, _, err = c.colHandle.CreateDocuments(context.Background(), documents); err != nil {
 			return err2.Wrap(err, "can not write documents")
 		}
-		fmt.Printf("\r%s Count: %d/%d", c.colHandle.Name(), currentCount, c.expectedCount)
+		fmt.Printf("\r%s.%s Count: %d/%d", c.colHandle.Database().Name(), c.colHandle.Name(),
+			currentCount, c.expectedCount)
+		c.colHandle.Database().Name()
 	}
 
-	fmt.Printf("\rCollection done:%s, Count: %d\n", c.colHandle.Name(), c.expectedCount)
+	fmt.Printf("\rFinished %s.%s, Count: %d\n", c.colHandle.Database().Name(), c.colHandle.Name(),
+		c.expectedCount)
 
 	return nil
 }
