@@ -140,7 +140,15 @@ func (s *DatabaseMetaData) CreateDatabases(ctx context.Context, client driver.Cl
 			}
 
 			expectedSize, expectedCount := collection.GetMetrics()
-			creator := database.NewCollectionCreator(expectedSize, expectedCount, &database.DocumentWithOneField{}, colHandle)
+			if expectedCount == 0 {
+				continue
+			}
+
+			creator := database.NewCollectionCreator(&database.DocumentsWithEqualLength{
+				ExpectedSize:  expectedSize,
+				ExpectedCount: expectedCount,
+			}, colHandle)
+
 			if err := creator.CreateDocuments(context.Background()); err != nil {
 				return err
 			}

@@ -56,7 +56,6 @@ func createFromDebugScript(cmd *cobra.Command, _ []string) error {
 	if oneshard {
 		options.Options.Sharding = driver.DatabaseShardingSingle
 	}
-	metadata.CreateDatabases(context.Background(), _client, &options)
 
-	return nil
+	return metadata.CreateDatabases(context.Background(), _client, &options)
 }

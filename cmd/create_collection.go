@@ -1,12 +1,13 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"github.com/arangodb/go-driver"
 	"github.com/neunhoef/smart-graph-maker/pkg/database"
-	err2 "github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"os"
 )
 
 var (
@@ -15,10 +16,15 @@ var (
 		Short: "Create collection with provided number of document and size of each document",
 		RunE:  createCollection,
 	}
+	cmdCreateCollectionFile = &cobra.Command{
+		Use:   "file",
+		Short: "Create collection with provided number of document and size of each document",
+		RunE:  createCollectionFromFile,
+	}
 )
 
 func init() {
-	var database, collection string
+	var database, collection, file string
 	var size, count int64
 	var numberOfShards int
 
@@ -29,6 +35,46 @@ func init() {
 		"Name of database which should be used")
 	cmdCreateCollection.Flags().StringVar(&collection, "collection", "test",
 		"Name of collection which should be used")
+
+	cmdCreateCollection.AddCommand(cmdCreateCollectionFile)
+	cmdCreateCollectionFile.Flags().StringVar(&file, "file", "",
+		"File with details about the collection")
+	cmdCreateCollectionFile.Flags().IntVar(&numberOfShards, "shards", 1, "Number of shards")
+	cmdCreateCollectionFile.Flags().StringVar(&database, "database", "_system",
+		"Name of database which should be used")
+	cmdCreateCollectionFile.Flags().StringVar(&collection, "collection", "test",
+		"Name of collection which should be used")
+}
+
+func createCollectionFromFile(cmd *cobra.Command, _ []string) error {
+	filename, _ := cmd.Flags().GetString("file")
+	DBName, _ := cmd.Flags().GetString("database")
+	colName, _ := cmd.Flags().GetString("collection")
+	shards, _ := cmd.Flags().GetInt("shards")
+
+	options := driver.CreateCollectionOptions{
+		NumberOfShards: shards,
+	}
+
+	colHandle, err := database.CreateOrGetDatabaseCollection(context.Background(), _client, DBName, colName, &options)
+	if err != nil {
+		return err
+	}
+
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Split(bufio.ScanWords)
+
+	creator := database.NewCollectionCreator(&database.DocumentsFromFile{
+		Scanner: scanner,
+	}, colHandle)
+
+	return creator.CreateDocuments(context.Background())
 }
 
 func createCollection(cmd *cobra.Command, _ []string) error {
@@ -46,20 +92,19 @@ func createCollection(cmd *cobra.Command, _ []string) error {
 		return errors.New("file with the count should be provided --countfile")
 	}
 
-	DBHandle, err := database.CreateOrGetDatabase(context.Background(), _client, DBName, nil)
-	if err != nil {
-		return err2.Wrap(err, "can not create/get database")
-	}
-
 	options := driver.CreateCollectionOptions{
 		NumberOfShards: shards,
 	}
 
-	colHandle, err := database.CreateOrGetCollection(context.Background(), DBHandle, colName, &options)
+	colHandle, err := database.CreateOrGetDatabaseCollection(context.Background(), _client, DBName, colName, &options)
 	if err != nil {
-		return err2.Wrap(err, "can not create a collection")
+		return err
 	}
 
-	creator := database.NewCollectionCreator(expectedSize, expectedCount, &database.DocumentWithOneField{}, colHandle)
+	creator := database.NewCollectionCreator(&database.DocumentsWithEqualLength{
+		ExpectedSize:  expectedSize,
+		ExpectedCount: expectedCount,
+	}, colHandle)
+
 	return creator.CreateDocuments(context.Background())
 }
