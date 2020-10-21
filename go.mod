@@ -1,4 +1,4 @@
-module github.com/neunhoef/smart-graph-maker
+module github.com/neunhoef/collectionmaker
 
 go 1.13
 

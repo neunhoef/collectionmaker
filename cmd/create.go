@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"github.com/arangodb/go-driver"
-	"github.com/neunhoef/smart-graph-maker/pkg/client"
+	"github.com/neunhoef/collectionmaker/pkg/client"
 	"github.com/spf13/cobra"
 )
 

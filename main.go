@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/neunhoef/smart-graph-maker/cmd"
+	"github.com/neunhoef/collectionmaker/cmd"
 )
 
 func main() {

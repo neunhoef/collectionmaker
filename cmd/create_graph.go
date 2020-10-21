@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/arangodb/go-driver"
-	"github.com/neunhoef/smart-graph-maker/pkg/database"
+	"github.com/neunhoef/collectionmaker/pkg/database"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"strconv"
