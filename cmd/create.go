@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"github.com/arangodb/go-driver"
-	"github.com/neunhoef/collectionmaker/pkg/client"
 	"github.com/spf13/cobra"
 )
 
@@ -12,12 +10,6 @@ var (
 		Short:             "Create resources (database, collection, graph) from different input data.",
 		PersistentPreRunE: connect,
 	}
-	cmdTest = &cobra.Command{
-		Use:               "test",
-		Short:             "Test resources",
-		PersistentPreRunE: connect,
-	}
-	_client driver.Client
 )
 
 func init() {
@@ -25,14 +17,4 @@ func init() {
 	cmdCreate.AddCommand(cmdCreateFromDebugScript)
 	cmdCreate.AddCommand(cmdCreateCollection)
 	cmdCreate.AddCommand(cmdCreateGraph)
-
-	cmdRoot.AddCommand(cmdTest)
-	cmdTest.AddCommand(cmdTestGraph)
-}
-
-func connect(_ *cobra.Command, _ []string) error {
-	var err error
-
-	_client, err = client.NewClient(endpoints, driver.BasicAuthentication("root", ""))
-	return err
 }

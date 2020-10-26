@@ -2,7 +2,6 @@ package client
 
 import (
 	"crypto/tls"
-	"fmt"
 	"github.com/arangodb/go-driver"
 	"github.com/arangodb/go-driver/http"
 	"github.com/pkg/errors"
@@ -19,12 +18,12 @@ func NewClient(endpoints []string, auth driver.Authentication) (driver.Client, e
 			if u, err := url.Parse(endpoint); err != nil {
 				return nil, errors.Wrapf(err, "can not parse endpoint: %s", endpoint)
 			} else {
-				if u.Scheme == "https" {
+				if u.Scheme == "https" || u.Scheme == "ssl" {
 					tlsConfig = &tls.Config{InsecureSkipVerify: true}
 				}
 			}
 		}
-		fmt.Printf("%d %s\n", i, endpoint)
+		//fmt.Printf("%d %s\n", i, endpoint)
 	}
 
 	conn, err := http.NewConnection(http.ConnectionConfig{

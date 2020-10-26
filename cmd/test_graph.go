@@ -22,6 +22,7 @@ var (
 func init() {
 	var runTimeSeconds int
 
+	cmdTest.AddCommand(cmdTestGraph)
 	cmdTestGraph.Flags().IntVar(&runTimeSeconds, "runTime", 30, "Run time in seconds")
 	commonGraphFlags(cmdTestGraph)
 }
