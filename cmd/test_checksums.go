@@ -23,17 +23,19 @@ var (
 )
 
 func init() {
-	var endpointTarget, jwtTarget string
+	var endpointTarget, jwtTarget, database string
 	cmdTest.AddCommand(cmdTestChecksum)
 
 	flags := cmdTestChecksum.PersistentFlags()
 	flags.StringVar(&endpointTarget, "endpoint-target", "", "Endpoint of target server")
 	flags.StringVar(&jwtTarget, "jwt-target", "", "Verbose output")
+	flags.StringVar(&database, "database", "", "Check only chosen database")
 }
 
 func testChecksums(cmd *cobra.Command, _ []string) error {
 	endpointTarget, _ := cmd.Flags().GetString("endpoint-target")
 	jwtTarget, _ := cmd.Flags().GetString("jwt-target")
+	database, _ := cmd.Flags().GetString("database")
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
@@ -45,7 +47,7 @@ func testChecksums(cmd *cobra.Command, _ []string) error {
 	}
 	go func() {
 		defer wg.Done()
-		sourceChecksums, errSource = getChecksums(_client, driver.RawAuthentication("bearer "+jwt))
+		sourceChecksums, errSource = getChecksums(_client, driver.RawAuthentication("bearer "+jwt), database)
 	}()
 
 	go func() {
@@ -57,7 +59,7 @@ func testChecksums(cmd *cobra.Command, _ []string) error {
 		if errTarget != nil {
 			return
 		}
-		targetChecksums, errTarget = getChecksums(targetClient, auth)
+		targetChecksums, errTarget = getChecksums(targetClient, auth, database)
 	}()
 
 	wg.Wait()
@@ -137,7 +139,7 @@ func testChecksums(cmd *cobra.Command, _ []string) error {
 
 type DatabasesChecksums map[string]map[string][]string
 
-func getChecksums(cl driver.Client, auth driver.Authentication) (DatabasesChecksums, error) {
+func getChecksums(cl driver.Client, auth driver.Authentication, databaseFilter string) (DatabasesChecksums, error) {
 	databasesChecksums := DatabasesChecksums{}
 	DBHandles, err := cl.Databases(context.Background())
 	if err != nil {
@@ -170,7 +172,7 @@ func getChecksums(cl driver.Client, auth driver.Authentication) (DatabasesChecks
 	var mutex sync.Mutex
 	for _, DBHandle := range DBHandles {
 		DBName := DBHandle.Name()
-		if DBName != "coreBelgium5AMLD" {
+		if len(databaseFilter) > 0 && DBName != databaseFilter {
 			continue
 		}
 		inventory, err := clusterClient.DatabaseInventory(context.Background(), DBHandle)
