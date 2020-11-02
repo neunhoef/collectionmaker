@@ -2,14 +2,17 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/arangodb/go-driver"
 	"github.com/arangodb/go-driver/util"
 	"github.com/neunhoef/collectionmaker/pkg/client"
 	err2 "github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -19,6 +22,26 @@ var (
 		Use:   "checksum",
 		Short: "Test databases consistency",
 		RunE:  testChecksums,
+	}
+	systemCollectionThatRequireSync = []string{
+		"_appbundles",
+		"_apps",
+		"_aqlfunctions",
+		"_graphs",
+		"_users",
+		"_analyzers",
+		// Special cases
+		"_jobs",
+		"_queues",
+	}
+	smartGraphCollectionPrefixesThatRequireSync = []string{
+		"_local_",
+		"_to_",
+		// Leave out _from_
+	}
+	systemCollectionThatRequireRename = map[string]string{
+		"_jobs":   "_jobsbackup",
+		"_queues": "_queuesbackup",
 	}
 )
 
@@ -32,202 +55,321 @@ func init() {
 	flags.StringVar(&database, "database", "", "Check only chosen database")
 }
 
+type ShardChecksum struct {
+	shardID  driver.ShardID
+	checksum string
+	err      error
+}
+
+type ShardsChecksum []ShardChecksum
+type ByShardID ShardsChecksum
+
+func (s ByShardID) Len() int           { return len(s) }
+func (s ByShardID) Less(i, j int) bool { return s[i].shardID < s[j].shardID }
+func (s ByShardID) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+type CollectionChecksum struct {
+	database   string
+	err        error
+	isSource   bool
+	collection string
+	checksums  ShardsChecksum
+}
+
+func (current CollectionChecksum) checksumStatus(other CollectionChecksum) (int, int, []string) {
+
+	var source, target CollectionChecksum
+	var output []string
+	var OK, notOK int
+
+	if current.isSource == other.isSource {
+		return 0, 1, []string{fmt.Sprintf("ERROR it is a developer mistake\n %v\n, %v\n", current, other)}
+	}
+
+	if current.isSource {
+		source = current
+		target = other
+	} else {
+		source = other
+		target = current
+	}
+
+	if source.err != nil || target.err != nil {
+		return 0, 1, []string{fmt.Sprintf("ERROR %s\n\tsource: %s\nttarget: %s", source.database,
+			source.err.Error(), target.err.Error())}
+	}
+
+	if len(source.checksums) != len(target.checksums) {
+		return 0, 1, []string{fmt.Sprintf(
+			"ERROR the collection '%s.%s' has different number of shards, source: %d, target: %d",
+			source.database, source.collection, len(source.checksums), len(target.checksums))}
+	}
+
+	for i := range source.checksums {
+		if source.checksums[i].err != nil || target.checksums[i].err != nil {
+			if source.checksums[i].err != nil && target.checksums[i].err != nil {
+				output = append(output, fmt.Sprintf("ERROR %s.%s\n\tsource: %s\n\ttarget: %s", source.database,
+					source.collection, source.checksums[i].err.Error(), target.checksums[i].err.Error()))
+			} else if source.checksums[i].err != nil {
+				output = append(output, fmt.Sprintf("ERROR %s.%s\n\tsource: %s\n\ttarget: %s", source.database,
+					source.collection, source.checksums[i].err.Error(), target.checksums[i].checksum))
+			} else {
+				output = append(output, fmt.Sprintf("ERROR %s.%s\n\tsource: %s\n\ttarget: %s", source.database,
+					source.collection, source.checksums[i].checksum, target.checksums[i].err.Error()))
+			}
+			notOK++
+			continue
+		}
+
+		if isChecksumEqual(source.checksums[i].checksum, other.checksums[i].checksum) {
+			if verbose {
+				output = append(output, fmt.Sprintf("OK %s.%s, source: %s, target: %s", source.database,
+					source.collection, source.checksums[i].checksum, target.checksums[i].checksum))
+			}
+			OK++
+			continue
+		}
+
+		notOK++
+		output = append(output, fmt.Sprintf("ERROR %s.%s\n\tsource: %s\n\ttarget: %s", source.database,
+			source.collection, source.checksums[i].checksum, target.checksums[i].checksum))
+	}
+
+	return OK, notOK, output
+}
 func testChecksums(cmd *cobra.Command, _ []string) error {
 	endpointTarget, _ := cmd.Flags().GetString("endpoint-target")
 	jwtTarget, _ := cmd.Flags().GetString("jwt-target")
 	database, _ := cmd.Flags().GetString("database")
 
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-	var errSource, errTarget error
-	var sourceChecksums, targetChecksums DatabasesChecksums
-
 	if len(jwt) == 0 {
 		return fmt.Errorf("--jwt must be provided for the source data center")
 	}
-	go func() {
-		defer wg.Done()
-		sourceChecksums, errSource = getChecksums(_client, driver.RawAuthentication("bearer "+jwt), database)
-	}()
 
-	go func() {
-		defer wg.Done()
-		var targetClient driver.Client
-
-		auth := driver.RawAuthentication("bearer " + jwtTarget)
-		targetClient, errTarget = client.NewClient([]string{endpointTarget}, auth)
-		if errTarget != nil {
-			return
-		}
-		targetChecksums, errTarget = getChecksums(targetClient, auth, database)
-	}()
-
-	wg.Wait()
-
-	if errSource != nil {
-		return err2.Wrapf(errSource, "can not fetch checksums from source data center")
+	targetAuth := driver.RawAuthentication("bearer " + jwtTarget)
+	targetClient, err := client.NewClient([]string{endpointTarget}, targetAuth)
+	if err != nil {
+		return err
 	}
 
-	if errTarget != nil {
-		return err2.Wrapf(errTarget, "can not fetch checksums from source data center")
-	}
+	resultChannel := make(chan CollectionChecksum)
+	g, ctxGroup := errgroup.WithContext(context.Background())
+	ctxInterrupt, cancelInterrupt := context.WithCancel(context.Background())
 
-	var errorCounter int
-	for DBName, database := range sourceChecksums {
-		targetDB, ok := targetChecksums[DBName]
-		if !ok {
-			errorCounter++
-			fmt.Printf("ERROR the database '%s' does not exist on the target data center\n", DBName)
-			continue
-		}
+	g.Go(func() error {
+		return getChecksums(ctxInterrupt, _client, resultChannel, true, driver.RawAuthentication("bearer "+jwt), database)
+	})
 
-		for collectionName, collection := range database {
-			targetCollection, ok := targetDB[collectionName]
-			if !ok {
-				errorCounter++
-				fmt.Printf("ERROR the collection '%s.%s' does not exist on the target data center\n",
-					DBName, collectionName)
-				continue
-			}
+	g.Go(func() error {
+		return getChecksums(ctxInterrupt, targetClient, resultChannel, false, targetAuth, database)
+	})
 
-			if len(collection) != len(targetCollection) {
-				errorCounter++
-				fmt.Printf(
-					"ERROR the collection '%s.%s' has different number of shards, source: %d, target: %d\n",
-					DBName, collectionName, len(collection), len(targetCollection))
-				continue
-			}
+	databases := make(map[string]map[string]CollectionChecksum)
+	printStatus := make([]string, 0)
+	var counterOK, counterErrors int
+	go func() {
+		var finished bool
+		for {
+			select {
+			case result := <-resultChannel:
+				finished = false
+				if _, ok := databases[result.database]; !ok {
+					databases[result.database] = make(map[string]CollectionChecksum)
+				}
 
-			for i := range collection {
-				if verbose {
-					fmt.Printf("OK %s.%s, source: %s, target: %s\n",
-						DBName, collectionName, collection[i], targetCollection[i])
-				} else {
-					if collection[i] != targetCollection[i] {
-						errorCounter++
-						fmt.Printf("ERROR '%s.%s', source: %s, target: %s\n",
-							DBName, collectionName, collection[i], targetCollection[i])
-					}
+				current, ok := databases[result.database][result.collection]
+				if !ok {
+					databases[result.database][result.collection] = result
+					continue
+				}
+
+				OK, notOK, output := current.checksumStatus(result)
+				if len(output) > 0 {
+					printStatus = append(printStatus, output...)
+				}
+				counterOK += OK
+				counterErrors += notOK
+				delete(databases[result.database], result.collection)
+				fmt.Printf("\rProgress OK: %d, errors: %d", counterOK, counterErrors)
+			case <-time.After(time.Second * 1):
+				if finished {
+					cancelInterrupt()
+					fmt.Println()
+					return
+				}
+				if ctxGroup.Err() != nil {
+					finished = true
 				}
 			}
 		}
+	}()
+
+	if err := g.Wait(); err != nil {
+		cancelInterrupt()
+		fmt.Println(err)
+		return err
 	}
 
-	for DBName, database := range targetChecksums {
-		sourceDB, ok := sourceChecksums[DBName]
-		if !ok {
-			errorCounter++
-			fmt.Printf("ERROR database '%s' does not exist on the source data center\n", DBName)
-			continue
-		}
+	<-ctxInterrupt.Done()
 
-		for collectionName := range database {
-			_, ok := sourceDB[collectionName]
-			if !ok {
-				errorCounter++
-				fmt.Printf("ERROR collection '%s.%s' does not exist on the source data center\n", DBName, collectionName)
-				continue
+	for DBName, database := range databases {
+		for collectionName, collection := range database {
+			if collection.isSource {
+				fmt.Printf("ERROR the collection '%s.%s' does not exist on the target data center\n",
+					DBName, collectionName)
+			} else {
+				fmt.Printf("ERROR the collection '%s.%s' does not exist on the source data center\n",
+					DBName, collectionName)
 			}
 		}
 	}
 
-	if !verbose && errorCounter == 0 {
-		fmt.Println("The whole data is the same")
+	for _, status := range printStatus {
+		fmt.Println(status)
 	}
+	fmt.Printf("OK: %d, errors: %d\n", counterOK, counterErrors)
+
 	return nil
 }
 
-type DatabasesChecksums map[string]map[string][]string
+func isChecksumEqual(checksum1, checksum2 string) bool {
+	for _, c := range checksum1 {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	for _, c := range checksum2 {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return checksum1 == checksum2
+}
 
-func getChecksums(cl driver.Client, auth driver.Authentication, databaseFilter string) (DatabasesChecksums, error) {
-	databasesChecksums := DatabasesChecksums{}
-	DBHandles, err := cl.Databases(context.Background())
+func getChecksums(ctx context.Context, cl driver.Client, result chan<- CollectionChecksum, isSource bool,
+	auth driver.Authentication, databaseFilter string) error {
+
+	DBHandles, err := cl.Databases(ctx)
 	if err != nil {
-		return nil, err2.Wrap(err, "can not create/get database")
+		return err2.Wrap(err, "can not create/get database")
 	}
 
-	clusterClient, err := cl.Cluster(context.Background())
+	clusterClient, err := cl.Cluster(ctx)
 	if err != nil {
-		return nil, err2.Wrap(err, "can not get cluster client")
+		return err2.Wrap(err, "can not get cluster client")
 	}
 
-	health, err := clusterClient.Health(context.Background())
+	health, err := clusterClient.Health(ctx)
 	if err != nil {
-		return nil, err2.Wrap(err, "can not get cluster health")
+		return err2.Wrap(err, "can not get cluster health")
 	}
 
 	DBServers := make(map[driver.ServerID]driver.Client)
 	for id, svr := range health.Health {
 		if svr.Role == driver.ServerRoleDBServer {
-			//driver.RawAuthentication("bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcmFuZ29kYiIsInNlcnZlcl9pZCI6ImZvbyJ9._gOqt6MEsrcYkGIv0hyh9sqSnM-8VjUho-0tjBoeI0Q"))
 			DBServerClient, err := client.NewClient([]string{util.FixupEndpointURLScheme(svr.Endpoint)}, auth)
 			if err != nil {
-				return nil, err2.Wrap(err, "can not get DBServer clients")
+				return err2.Wrap(err, "can not get DBServer clients")
 			}
 			DBServers[id] = DBServerClient
 		}
 	}
 
 	wg := sync.WaitGroup{}
-	var mutex sync.Mutex
+	throttle := make(chan struct{}, 30)
 	for _, DBHandle := range DBHandles {
+		if ctx.Err() != nil {
+			break
+		}
 		DBName := DBHandle.Name()
 		if len(databaseFilter) > 0 && DBName != databaseFilter {
 			continue
 		}
+
 		inventory, err := clusterClient.DatabaseInventory(context.Background(), DBHandle)
 		if err != nil {
-			fmt.Println(err)
+			result <- CollectionChecksum{
+				database: DBName,
+				isSource: isSource,
+				err:      err,
+			}
 			continue
-			//return nil, err2.Wrap(err, "can not get database inventory")
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			DBMap := make(map[string][]string)
-			for _, collection := range inventory.Collections {
-				array := make([]string, 0)
-				shardMap := make(map[string]string)
-				for shardID, shardDBServers := range collection.Parameters.Shards {
-					array = append(array, string(shardID))
-
-					if len(shardDBServers) == 0 {
-						shardMap[string(shardID)] = "NO DBSERVER"
-						continue
-					}
-
-					connection := DBServers[shardDBServers[0]].Connection()
-					if checksum, err := getChecksum(connection, DBName, string(shardID)); err == nil {
-						shardMap[string(shardID)] = checksum
-					} else {
-						shardMap[string(shardID)] = "ERROR" + err.Error()
-					}
-				}
-
-				ChecksumArray := make([]string, 0)
-				sort.Strings(array)
-				for _, s := range array {
-					if v, ok := shardMap[s]; ok {
-						ChecksumArray = append(ChecksumArray, v)
-					}
-				}
-
-				DBMap[collectionNameException(collection.Parameters.Name)] = ChecksumArray
+		for _, collection := range inventory.Collections {
+			collection := collection
+			if !MustSynchronizeShards(collection) {
+				continue
 			}
 
-			mutex.Lock()
-			databasesChecksums[DBName] = DBMap
-			mutex.Unlock()
-		}()
+			if !isSource {
+				if _, ok := systemCollectionThatRequireRename[collection.Parameters.Name]; ok {
+					continue
+				}
+			}
+
+			if ctx.Err() != nil {
+				break
+			}
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				throttle <- struct{}{}
+				defer func() {
+					<-throttle // TODO it should be per DBserver
+				}()
+
+				//var timeout time.Duration
+				//if col, err := DBHandle.Collection(context.Background(), collection.Parameters.Name); err == nil {
+				//	if count, err := col.Count(context.Background()); err == nil {
+				//		timeout = time.Duration(int(count)/len(collection.Parameters.Shards)) * (time.Microsecond * 10)
+				//	}
+				//}
+				//
+				//if timeout < time.Minute*5 {
+				//	timeout = time.Minute * 5
+				//} else if timeout > time.Hour {
+				//	timeout = time.Hour
+				//}
+
+				checksums := make(ShardsChecksum, 0, len(collection.Parameters.Shards))
+				for shardID, shardDBServers := range collection.Parameters.Shards {
+
+					shardResult := ShardChecksum{
+						shardID: shardID,
+					}
+					if len(shardDBServers) > 0 {
+						connection := DBServers[shardDBServers[0]].Connection()
+						ctxGetChecksum, cancel := context.WithTimeout(ctx, time.Minute*30)
+						shardResult.checksum, shardResult.err = getChecksum(ctxGetChecksum, connection, DBName, string(shardID))
+						cancel()
+						if ctx.Err() != nil {
+							return
+						}
+					} else {
+						shardResult.err = errors.New("no DB server")
+					}
+
+					checksums = append(checksums, shardResult)
+				}
+
+				sort.Sort(ByShardID(checksums))
+				result <- CollectionChecksum{
+					database:   DBName,
+					isSource:   isSource,
+					collection: collectionNameException(collection.Parameters.Name),
+					checksums:  checksums,
+				}
+			}()
+		}
 	}
 	wg.Wait()
 
-	return databasesChecksums, nil
+	return nil
 }
 
-func getChecksum(connection driver.Connection, DBName, shardID string) (string, error) {
+func getChecksum(ctx context.Context, connection driver.Connection, DBName, shardID string) (string, error) {
 
 	req, err := connection.NewRequest("GET",
 		path.Join("_db", DBName, "_api/collection", shardID, "checksum"))
@@ -235,8 +377,6 @@ func getChecksum(connection driver.Connection, DBName, shardID string) (string, 
 		return "", err2.Wrap(err, "can not create request to fetch checksum")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*2)
-	defer cancel()
 	resp, err := connection.Do(ctx, req)
 	if err != nil {
 		return "", err2.Wrap(err, "can not get response for a checksum")
@@ -265,4 +405,32 @@ func collectionNameException(name string) string {
 	}
 
 	return name
+}
+
+func MustSynchronizeShards(col driver.InventoryCollection) bool {
+	if !col.Parameters.IsSystem {
+		if col.Parameters.Type == driver.CollectionTypeEdge && col.Parameters.IsSmart {
+			// This is the case of a "virtual" smart edge collection, we do not
+			// synchronize this, but rather the two hidden system collections
+			// with the prefix "_local_" and "_to_".
+			return false
+		}
+		return true
+	}
+	for _, x := range systemCollectionThatRequireSync {
+		if col.Parameters.Name == x {
+			return true
+		}
+	}
+	for _, prefix := range smartGraphCollectionPrefixesThatRequireSync {
+		if strings.HasPrefix(col.Parameters.Name, prefix) {
+			return true
+		}
+	}
+
+	if col.Parameters.Name == "_queuesbackup" || col.Parameters.Name == "_jobsbackup" {
+		return true
+	}
+
+	return false
 }
