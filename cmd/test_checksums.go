@@ -121,7 +121,7 @@ func (current CollectionChecksum) checksumStatus(other CollectionChecksum) (int,
 			continue
 		}
 
-		if isChecksumEqual(source.checksums[i].checksum, other.checksums[i].checksum) {
+		if isChecksumEqual(source.checksums[i].checksum, target.checksums[i].checksum) {
 			if verbose {
 				output = append(output, fmt.Sprintf("OK %s.%s, source: %s, target: %s", source.database,
 					source.collection, source.checksums[i].checksum, target.checksums[i].checksum))
@@ -212,8 +212,12 @@ func testChecksums(cmd *cobra.Command, _ []string) error {
 
 	<-ctxInterrupt.Done()
 
+	for _, status := range printStatus {
+		fmt.Println(status)
+	}
 	for DBName, database := range databases {
 		for collectionName, collection := range database {
+			counterErrors++
 			if collection.isSource {
 				fmt.Printf("ERROR the collection '%s.%s' does not exist on the target data center\n",
 					DBName, collectionName)
@@ -222,10 +226,6 @@ func testChecksums(cmd *cobra.Command, _ []string) error {
 					DBName, collectionName)
 			}
 		}
-	}
-
-	for _, status := range printStatus {
-		fmt.Println(status)
 	}
 	fmt.Printf("OK: %d, errors: %d\n", counterOK, counterErrors)
 
