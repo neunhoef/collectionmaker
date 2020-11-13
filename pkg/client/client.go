@@ -29,7 +29,7 @@ func NewClient(endpoints []string, auth driver.Authentication) (driver.Client, e
 	conn, err := http.NewConnection(http.ConnectionConfig{
 		Endpoints: endpoints,
 		TLSConfig: tlsConfig,
-		ConnLimit: 64,
+		ConnLimit: 1024,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create connection")
