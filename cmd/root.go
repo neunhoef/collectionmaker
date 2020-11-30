@@ -28,7 +28,7 @@ func connect(_ *cobra.Command, _ []string) error {
 	var err error
 
 	if len(jwt) == 0 {
-		_client, err = client.NewClient(endpoints, driver.BasicAuthentication("root", ""))
+		_client, err = client.NewClient(endpoints, driver.BasicAuthentication("root", ".Pr1vate!AC"))
 	} else {
 		_client, err = client.NewClient(endpoints, driver.RawAuthentication("bearer "+jwt))
 	}

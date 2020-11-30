@@ -57,6 +57,7 @@ func writeEdges(cmd *cobra.Command, _ []string) error {
 // writeSomeEdges creates some edges in parallel
 func writeSomeEdgesParallel(parallelism int, number int64, db driver.Database) error {
 	var mutex sync.Mutex
+	totaltimestart := time.Now()
 	wg := sync.WaitGroup{}
 	haveError := false
 	for i := 1; i <= parallelism; i++ {
@@ -73,12 +74,16 @@ func writeSomeEdgesParallel(parallelism int, number int64, db driver.Database) e
 				haveError = true
 			}
 			mutex.Lock()
-			fmt.Printf("Go routine %d done", i)
+			fmt.Printf("Go routine %d done\n", i)
 			mutex.Unlock()
 		}(&wg, i)
 	}
 
 	wg.Wait()
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+	docspersec := float64(int64(parallelism) * number) / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nTotal number of edges written: %d, total time: %v, total edges per second: %f\n", int64(parallelism) * number, totaltimeend.Sub(totaltimestart), docspersec)
 	if !haveError {
 		return nil
 	}
@@ -133,7 +138,7 @@ func writeSomeEdges(nrEdges int64, id string, db driver.Database, mutex *sync.Mu
 				sum = sum + int64(t)
 			}
 			totaltime := time.Now().Sub(cyclestart)
-			docspersec := 100000.0 / float64(totaltime / time.Second)
+			docspersec := 100000.0 / (float64(totaltime) / float64(time.Second))
 			mutex.Lock()
 			fmt.Printf("Times for last 100 writes (=100000 edges): %s (median), %s (90%%ile), %s (99%%ilie), %s (average), edges per second in this go routine: %f\n", times[50], times[90], times[99], time.Duration(sum/100), docspersec)
 			mutex.Unlock()

@@ -18,8 +18,12 @@ var (
 
 func init() {
 	var drop = false
+	var replicationFactor int
+	var numberOfShards int
 
 	cmdCreateEdgeCol.Flags().BoolVar(&drop, "drop", drop, "set -drop to true to drop data before start")
+	cmdCreateEdgeCol.Flags().IntVar(&replicationFactor, "replicationFactor", 3, "replication factor for edge collection")
+	cmdCreateEdgeCol.Flags().IntVar(&numberOfShards, "numberOfShards", 42, "number of shards of edge collection")
 }
 
 func createEdgeCol(cmd *cobra.Command, _ []string) error {
@@ -29,7 +33,7 @@ func createEdgeCol(cmd *cobra.Command, _ []string) error {
 		return errors.Wrapf(err, "can not get database: %s", "_system")
 	}
 
-	if err := setupEdgeCol(drop, db); err != nil {
+	if err := setupEdgeCol(cmd, drop, db); err != nil {
 		return errors.Wrapf(err, "can not create edge collection")
 	}
 
@@ -37,7 +41,10 @@ func createEdgeCol(cmd *cobra.Command, _ []string) error {
 }
 
 // setupEdgeCol will set up a single edge collecion
-func setupEdgeCol(drop bool, db driver.Database) error {
+func setupEdgeCol(cmd *cobra.Command, drop bool, db driver.Database) error {
+	replicationFactor, _ := cmd.Flags().GetInt("replicationFactor")
+	numberOfShards, _ := cmd.Flags().GetInt("numberOfShards")
+
 	ec, err := db.Collection(nil, "edges")
 	if err == nil {
 		if !drop {
@@ -57,8 +64,8 @@ func setupEdgeCol(drop bool, db driver.Database) error {
 	// Now create the edge collection:
 	edges, err := db.CreateCollection(nil, "edges", &driver.CreateCollectionOptions{
 			Type: driver.CollectionTypeEdge,
-			NumberOfShards: 42,
-			ReplicationFactor: 3,
+			NumberOfShards: numberOfShards,
+			ReplicationFactor: replicationFactor,
 	})
 	if err != nil {
 		fmt.Printf("Error: could not create edge collection: %v\n", err)
