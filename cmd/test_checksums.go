@@ -302,10 +302,13 @@ func getChecksums(ctx context.Context, cl driver.Client, result chan<- Collectio
 				continue
 			}
 
-			if !isSource {
-				if _, ok := systemCollectionThatRequireRename[collection.Parameters.Name]; ok {
+			if isSource {
+				if collection.Parameters.Name != collectionNameException(collection.Parameters.Name) {
+					// source data center can not have collections like "_jobsbackup" and "_queuesbackup"
 					continue
 				}
+			} else if _, ok := systemCollectionThatRequireRename[collection.Parameters.Name]; ok {
+				continue
 			}
 
 			if ctx.Err() != nil {
