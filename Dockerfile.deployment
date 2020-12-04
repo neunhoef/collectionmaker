@@ -1,0 +1,3 @@
+FROM ubuntu
+
+COPY bin/linux/amd64/collectionmaker /
