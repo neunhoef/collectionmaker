@@ -14,43 +14,31 @@ import (
 )
 
 var (
-	cmdWriteEdges = &cobra.Command{
-		Use:   "edges",
-		Short: "Write edges",
-		RunE:  writeEdges,
+	cmdElCheapoWrites = &cobra.Command{
+		Use:   "elcheapo",
+		Short: "Write edges transactional",
+		RunE:  writeEdgesElCheapo,
 	}
 )
 
-type Edge struct {
-	From          string `json:"_from"`
-	To            string `json:"_to"`
-	FromUid       int    `json:"fromUid"`
-	ToUid         int    `json:"toUid"`
-	Score         int    `json:"score"`
-	Last_modified string `json:"last_modified"`
-}
-
 func init() {
 	var parallelism int = 1
-	var startDelay int64 = 5
 	var number int64 = 1000000
-	cmdWriteEdges.Flags().IntVar(&parallelism, "parallelism", parallelism, "set -parallelism to use multiple go routines")
-	cmdWriteEdges.Flags().Int64Var(&number, "number", number, "set -number for number of edges to write per go routine")
-	cmdWriteEdges.Flags().Int64Var(&startDelay, "start-delay", startDelay, "Delay between the start of two go routines.")
+	cmdElCheapoWrites.Flags().IntVar(&parallelism, "parallelism", parallelism, "set -parallelism to use multiple go routines")
+	cmdElCheapoWrites.Flags().Int64Var(&number, "number", number, "set -number for number of edges to write per go routine")
 }
 
 // writeEdges writes edges in parallel
-func writeEdges(cmd *cobra.Command, _ []string) error {
+func writeEdgesElCheapo(cmd *cobra.Command, _ []string) error {
 	parallelism, _ := cmd.Flags().GetInt("parallelism")
 	number, _ := cmd.Flags().GetInt64("number")
-	startDelay, _ := cmd.Flags().GetInt64("start-delay")
 
 	db, err := _client.Database(context.Background(), "_system")
 	if err != nil {
 		return errors.Wrapf(err, "can not get database: %s", "_system")
 	}
 
-	if err := writeSomeEdgesParallel(parallelism, number, startDelay, db); err != nil {
+	if err := writeSomeEdgesParallelElCheapo(parallelism, number, db); err != nil {
 		return errors.Wrapf(err, "can not setup some tenants")
 	}
 
@@ -58,13 +46,13 @@ func writeEdges(cmd *cobra.Command, _ []string) error {
 }
 
 // writeSomeEdges creates some edges in parallel
-func writeSomeEdgesParallel(parallelism int, number int64, startDelay int64, db driver.Database) error {
+func writeSomeEdgesParallelElCheapo(parallelism int, number int64, db driver.Database) error {
 	var mutex sync.Mutex
 	totaltimestart := time.Now()
 	wg := sync.WaitGroup{}
 	haveError := false
 	for i := 1; i <= parallelism; i++ {
-	  time.Sleep(time.Duration(startDelay) * time.Millisecond)
+	  time.Sleep(5 * time.Millisecond)
 		i := i // bring into scope
 		wg.Add(1)
 
@@ -72,9 +60,9 @@ func writeSomeEdgesParallel(parallelism int, number int64, startDelay int64, db 
 			defer wg.Done()
 			fmt.Printf("Starting go routine...\n")
 			id := "id_" + strconv.FormatInt(int64(i), 10)
-			err := writeSomeEdges(number, id, db, &mutex)
+			err := writeSomeEdgesElCheapo(number, id, db, &mutex)
 			if err != nil {
-				fmt.Printf("writeSomeEdges error: %v\n", err)
+				fmt.Printf("writeSomeEdgesElCheapo error: %v\n", err)
 				haveError = true
 			}
 			mutex.Lock()
@@ -97,15 +85,20 @@ func writeSomeEdgesParallel(parallelism int, number int64, startDelay int64, db 
 
 // writeOneTenant writes `nrPaths` short paths into the smart graph for
 // tenant with id `tenantId`.
-func writeSomeEdges(nrEdges int64, id string, db driver.Database, mutex *sync.Mutex) error {
+func writeSomeEdgesElCheapo(nrEdges int64, id string, db driver.Database, mutex *sync.Mutex) error {
 	edges, err := db.Collection(nil, "edges")
 	if err != nil {
-		fmt.Printf("writeSomeEdges: could not open `edges` collection: %v\n", err)
+		fmt.Printf("writeSomeEdgesElCheapo: could not open `edges` collection: %v\n", err)
 		return err
 	}
 	eds := make([]Edge, 0, 1000)
   times := make([]time.Duration, 0, 1000)
 	cyclestart := time.Now()
+	tcolls := driver.TransactionCollections{
+		Write: []string{"edges"},
+	}
+	topts := driver.BeginTransactionOptions{
+	}
 	for i := int64(1); i <= nrEdges / 1000; i++ {
 		start := time.Now()
     for j := 1; j <= 1000; j++ {
@@ -121,12 +114,28 @@ func writeSomeEdges(nrEdges int64, id string, db driver.Database, mutex *sync.Mu
 			})
 	  }
 		ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
-		_, _, err := edges.CreateDocuments(ctx, eds)
-		cancel()
+		tid, err := db.BeginTransaction(ctx, tcolls, &topts)
 		if err != nil {
-			fmt.Printf("writeSomeEdges: could not write edges: %v\n", err)
+			cancel()
+			fmt.Printf("writeSomeEdgesElCheapo: could not begin transaction: %v\n", err)
 			return err
 		}
+    ctx2 := driver.WithTransactionID(ctx, tid)
+		_, _, err = edges.CreateDocuments(ctx2, eds)
+		if err != nil {
+			_ = db.AbortTransaction(ctx, tid, &driver.AbortTransactionOptions{})
+			cancel()
+			fmt.Printf("writeSomeEdgesElCheapo: could not write edges: %v\n", err)
+			return err
+		}
+		err = db.CommitTransaction(ctx, tid, &driver.CommitTransactionOptions{})
+		cancel()
+		if err != nil {
+			fmt.Printf("writeSomeEdgesElCheap: could not commit transaction: %v\n", err)
+			return err
+		}
+
+		cancel()
 		eds = eds[0:0]
 		if i % 100 == 0 {
 			mutex.Lock()

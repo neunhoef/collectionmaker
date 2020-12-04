@@ -14,6 +14,8 @@ var (
 	verbose   bool
 	_client   driver.Client
 	jwt       string
+	username  string
+	password  string
 )
 
 func init() {
@@ -22,13 +24,15 @@ func init() {
 		"Endpoint of server where data should be written.")
 	rootFlags.BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 	rootFlags.StringVar(&jwt, "jwt", "", "Verbose output")
+	rootFlags.StringVar(&username, "username", "root", "User name for database access.")
+	rootFlags.StringVar(&password, "password", "", "Password for database access.")
 }
 
 func connect(_ *cobra.Command, _ []string) error {
 	var err error
 
 	if len(jwt) == 0 {
-		_client, err = client.NewClient(endpoints, driver.BasicAuthentication("root", ""))
+		_client, err = client.NewClient(endpoints, driver.BasicAuthentication(username, password))
 	} else {
 		_client, err = client.NewClient(endpoints, driver.RawAuthentication("bearer "+jwt))
 	}
