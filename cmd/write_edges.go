@@ -32,22 +32,25 @@ type Edge struct {
 
 func init() {
 	var parallelism int = 1
+	var startDelay int64 = 5
 	var number int64 = 1000000
 	cmdWriteEdges.Flags().IntVar(&parallelism, "parallelism", parallelism, "set -parallelism to use multiple go routines")
 	cmdWriteEdges.Flags().Int64Var(&number, "number", number, "set -number for number of edges to write per go routine")
+	cmdWriteEdges.Flags().Int64Var(&startDelay, "start-delay", startDelay, "Delay between the start of two go routines.")
 }
 
 // writeEdges writes edges in parallel
 func writeEdges(cmd *cobra.Command, _ []string) error {
 	parallelism, _ := cmd.Flags().GetInt("parallelism")
 	number, _ := cmd.Flags().GetInt64("number")
+	startDelay, _ := cmd.Flags().GetInt64("start-delay")
 
 	db, err := _client.Database(context.Background(), "_system")
 	if err != nil {
 		return errors.Wrapf(err, "can not get database: %s", "_system")
 	}
 
-	if err := writeSomeEdgesParallel(parallelism, number, db); err != nil {
+	if err := writeSomeEdgesParallel(parallelism, number, startDelay, db); err != nil {
 		return errors.Wrapf(err, "can not setup some tenants")
 	}
 
@@ -55,12 +58,13 @@ func writeEdges(cmd *cobra.Command, _ []string) error {
 }
 
 // writeSomeEdges creates some edges in parallel
-func writeSomeEdgesParallel(parallelism int, number int64, db driver.Database) error {
+func writeSomeEdgesParallel(parallelism int, number int64, startDelay int64, db driver.Database) error {
 	var mutex sync.Mutex
 	totaltimestart := time.Now()
 	wg := sync.WaitGroup{}
 	haveError := false
 	for i := 1; i <= parallelism; i++ {
+	  time.Sleep(time.Duration(startDelay) * time.Millisecond)
 		i := i // bring into scope
 		wg.Add(1)
 
