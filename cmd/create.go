@@ -18,4 +18,5 @@ func init() {
 	cmdCreate.AddCommand(cmdCreateCollection)
 	cmdCreate.AddCommand(cmdCreateGraph)
 	cmdCreate.AddCommand(cmdCreateEdgeCol)
+	cmdCreate.AddCommand(cmdCreateGraphCols)
 }
