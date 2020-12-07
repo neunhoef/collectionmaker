@@ -56,13 +56,11 @@ func writeGraphParallel(parallelism int, number int64, startDelay int64, db driv
 	var mutex sync.Mutex
 	totaltimestart := time.Now()
 	wg := sync.WaitGroup{}
+	wg.Add(parallelism)
 	haveError := false
 	for i := 1; i <= parallelism; i++ {
 	  time.Sleep(time.Duration(startDelay) * time.Millisecond)
-		i := i // bring into scope
-		wg.Add(1)
-
-		go func(wg *sync.WaitGroup, i int) {
+		go func(i int) {
 			defer wg.Done()
 			fmt.Printf("Starting go routine...\n")
 			id := "id_" + strconv.FormatInt(int64(i), 10)
@@ -74,7 +72,7 @@ func writeGraphParallel(parallelism int, number int64, startDelay int64, db driv
 			mutex.Lock()
 			fmt.Printf("Go routine %d done\n", i)
 			mutex.Unlock()
-		}(&wg, i)
+		}(i)
 	}
 
 	wg.Wait()
