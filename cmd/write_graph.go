@@ -105,14 +105,18 @@ func writeSomeGraph(nr int64, id string, db driver.Database, mutex *sync.Mutex) 
 	optype := 0   // changes from 0 to 3 and then back to 0
   times := make([]time.Duration, 0, 10000)
 	cyclestart := time.Now()
+	randomLargeString := database.MakeRandomString(1400)
+	randomSmallString := database.MakeRandomString(700)
+	tenant := int64(1)
+	previous := int64(0)
 	for i := int64(0); i < nr; i++ {
 		start := time.Now()
 		switch (optype) {
 		case 0:  // write a new vertex
 		  inst := Instance{
 				Key: "I" + id + "_" + strconv.FormatInt(i/4, 10),
-			  TenantId: "T" + strconv.FormatInt(int64(rand.Intn(10000)), 10),
-				Payload: database.MakeRandomString(1400),
+			  TenantId: "T" + strconv.FormatInt(tenant, 10),
+				Payload: strconv.FormatInt(i, 10) + randomLargeString,
 		  }
 			ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 			_, err := instances.CreateDocument(ctx, &inst)
@@ -126,8 +130,8 @@ func writeSomeGraph(nr int64, id string, db driver.Database, mutex *sync.Mutex) 
 				Key: "S" + id + "_" + strconv.FormatInt(i/4, 10),
 				From: "instances/I" + id + "_" + strconv.FormatInt(i/4, 10),
 				To:   "instances/I" + id + "_" + strconv.FormatInt(i/4, 10),
-			  TenantId: "T" + strconv.FormatInt(int64(rand.Intn(10000)), 10),
-				Payload: database.MakeRandomString(700),
+			  TenantId: "T" + strconv.FormatInt(tenant, 10),
+				Payload: strconv.FormatInt(i, 10) + randomSmallString,
 		  }
 			ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 			_, err := steps.CreateDocument(ctx, &step)
@@ -137,17 +141,11 @@ func writeSomeGraph(nr int64, id string, db driver.Database, mutex *sync.Mutex) 
 				return err
 			}
 		case 2:  // modify an existing vertex
-		  var previous int64
-		  if i < 4 {
-				previous = 0
-			} else {
-				previous = rand.Int63n(i/4)
-			}
-			key := "I" + id + "_" + strconv.FormatInt(previous/4, 10)
+			key := "I" + id + "_" + strconv.FormatInt(previous, 10)
 		  inst := Instance{
 				Key: key,
-			  TenantId: "T" + strconv.FormatInt(int64(rand.Intn(10000)), 10),
-				Payload: database.MakeRandomString(1400),
+			  TenantId: "T" + strconv.FormatInt(tenant, 10),
+				Payload: strconv.FormatInt(i, 10) + randomLargeString,
 		  }
 			ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 			_, err := instances.ReplaceDocument(ctx, key, &inst)
@@ -157,19 +155,13 @@ func writeSomeGraph(nr int64, id string, db driver.Database, mutex *sync.Mutex) 
 				return err
 			}
 		case 3:  // modify an existing edge
-		  var previous int64
-		  if i < 4 {
-				previous = 0
-			} else {
-				previous = rand.Int63n(i/4)
-			}
-			key := "S" + id + "_" + strconv.FormatInt(previous/4, 10)
+			key := "S" + id + "_" + strconv.FormatInt(previous, 10)
 		  step := Step{
 				Key: key,
 				From: "instances/I" + id + "_" + strconv.FormatInt(i/4, 10),
 				To:   "instances/I" + id + "_" + strconv.FormatInt(i/4, 10),
-			  TenantId: "T" + strconv.FormatInt(int64(rand.Intn(10000)), 10),
-				Payload: database.MakeRandomString(700),
+			  TenantId: "T" + strconv.FormatInt(tenant, 10),
+				Payload: strconv.FormatInt(i, 10) + randomLargeString,
 		  }
 			ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 			_, err := steps.ReplaceDocument(ctx, key, &step)
@@ -200,6 +192,18 @@ func writeSomeGraph(nr int64, id string, db driver.Database, mutex *sync.Mutex) 
 			cyclestart = time.Now()
 		}
 		optype = (optype + 1) & 3
+		tenant = (tenant + 1) & 65535
+		if i < 4 {
+			previous = 0
+		} else if i < 200 {
+			previous = rand.Int63n(i/4)
+	  } else {
+			previous = previous + 47
+			limit := i/4-1
+			for previous >= limit {
+				previous = previous - limit
+			}
+		}
 	}
 	return nil
 }
