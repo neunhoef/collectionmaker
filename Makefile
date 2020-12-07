@@ -10,7 +10,7 @@ BIN_FILE=bin/${GOOS}/${GOARCH}/collectionmaker
 
 # Build binary locally.
 build:
-	go build -o ${BIN_FILE}
+	go build -o ${BIN_FILE} -tags netgo
 
 # Build binary without installed GO and copy it to the local system.
 docker:

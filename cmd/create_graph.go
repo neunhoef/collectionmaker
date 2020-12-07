@@ -35,6 +35,7 @@ type Instance struct {
 }
 
 type Step struct {
+  Key      string `json:"_key,omitempty"`
 	TenantId string `json:"tenantId"`
 	From     string `json:"_from"`
 	To       string `json:"_to"`

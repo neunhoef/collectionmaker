@@ -132,7 +132,6 @@ func writeSomeEdges(nrEdges int64, id string, db driver.Database, mutex *sync.Mu
 			mutex.Lock()
 			fmt.Printf("%s Have imported %d paths for id %s.\n", time.Now(), i * 1000, id)
 			mutex.Unlock()
-			cancel()
 		}
     times = append(times, time.Now().Sub(start))
 		if len(times) % 100 == 0 {
