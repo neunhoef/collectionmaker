@@ -121,7 +121,7 @@ func writeSomeEdges(nrEdges int64, id string, db driver.Database, mutex *sync.Mu
 			})
 	  }
 		ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
-		_, _, err := edges.CreateDocuments(ctx, eds)
+		_, err := edges.ImportDocuments(ctx, eds, &driver.ImportDocumentOptions{})
 		cancel()
 		if err != nil {
 			fmt.Printf("writeSomeEdges: could not write edges: %v\n", err)

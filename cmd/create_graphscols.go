@@ -33,79 +33,88 @@ func createGraphCols(cmd *cobra.Command, _ []string) error {
 		return errors.Wrapf(err, "can not get database: %s", "_system")
 	}
 
-	if err := setupGraphVertexCol(cmd, drop, db); err != nil {
+	if err := setupGraphVertexCol(cmd, drop, db, ""); err != nil {
 		return errors.Wrapf(err, "can not create graph vertex collection")
 	}
-	if err := setupGraphEdgeCol(cmd, drop, db); err != nil {
+	if err := setupGraphEdgeCol(cmd, drop, db, ""); err != nil {
 		return errors.Wrapf(err, "can not create graph edge collection")
 	}
+	if err := setupGraphVertexCol(cmd, drop, db, "2"); err != nil {
+		return errors.Wrapf(err, "can not create graph vertex collection")
+	}
+	if err := setupGraphEdgeCol(cmd, drop, db, "2"); err != nil {
+		return errors.Wrapf(err, "can not create graph edge collection")
+	}
+
 
 	return nil
 }
 
 // setupGraphVertexCol will set up a single vertex collecion
-func setupGraphVertexCol(cmd *cobra.Command, drop bool, db driver.Database) error {
+func setupGraphVertexCol(cmd *cobra.Command, drop bool, db driver.Database, suffix string) error {
+	name := "instances" + suffix
 	replicationFactor, _ := cmd.Flags().GetInt("replicationFactor")
 	numberOfShards, _ := cmd.Flags().GetInt("numberOfShards")
 
-	ec, err := db.Collection(nil, "instances")
+	ec, err := db.Collection(nil, "instances" + suffix)
 	if err == nil {
 		if !drop {
-			fmt.Printf("Found vertex collection 'instances' already, setup is already done.\n")
+			fmt.Printf("Found vertex collection '%s' already, setup is already done.\n", name)
 			return nil
 		}
 		err = ec.Remove(nil)
 		if err != nil {
-			fmt.Printf("Could not drop vertex collection 'instances': %v\n", err)
+			fmt.Printf("Could not drop vertex collection '%s': %v\n", name, err)
 			return err
 		}
 	} else if !driver.IsNotFound(err) {
-		fmt.Printf("Error: could not look for vertex collection 'instances': %v\n", err)
+		fmt.Printf("Error: could not look for vertex collection '%s': %v\n", name, err)
 		return err
 	}
 
 	// Now create the vertex collection:
-	_, err = db.CreateCollection(nil, "instances", &driver.CreateCollectionOptions{
+	_, err = db.CreateCollection(nil, name, &driver.CreateCollectionOptions{
 			Type: driver.CollectionTypeDocument,
 			NumberOfShards: numberOfShards,
 			ReplicationFactor: replicationFactor,
 	})
 	if err != nil {
-		fmt.Printf("Error: could not create vertex collection 'instances': %v\n", err)
+		fmt.Printf("Error: could not create vertex collection '%s': %v\n", name, err)
 		return err
 	}
 	return nil
 }
 
 // setupGraphEdgeCol will set up a single edge collecion
-func setupGraphEdgeCol(cmd *cobra.Command, drop bool, db driver.Database) error {
+func setupGraphEdgeCol(cmd *cobra.Command, drop bool, db driver.Database, suffix string) error {
+	name := "steps" + suffix;
 	replicationFactor, _ := cmd.Flags().GetInt("replicationFactor")
 	numberOfShards, _ := cmd.Flags().GetInt("numberOfShards")
 
-	ec, err := db.Collection(nil, "steps")
+	ec, err := db.Collection(nil, name)
 	if err == nil {
 		if !drop {
-			fmt.Printf("Found edge collection 'steps' already, setup is already done.\n")
+			fmt.Printf("Found edge collection '%s' already, setup is already done.\n", name)
 			return nil
 		}
 		err = ec.Remove(nil)
 		if err != nil {
-			fmt.Printf("Could not drop edge collection 'steps': %v\n", err)
+			fmt.Printf("Could not drop edge collection '%s': %v\n", name, err)
 			return err
 		}
 	} else if !driver.IsNotFound(err) {
-		fmt.Printf("Error: could not look for edge collection 'steps': %v\n", err)
+		fmt.Printf("Error: could not look for edge collection '%s': %v\n", name, err)
 		return err
 	}
 
 	// Now create the edge collection:
-	_, err = db.CreateCollection(nil, "steps", &driver.CreateCollectionOptions{
+	_, err = db.CreateCollection(nil, name, &driver.CreateCollectionOptions{
 			Type: driver.CollectionTypeEdge,
 			NumberOfShards: numberOfShards,
 			ReplicationFactor: replicationFactor,
 	})
 	if err != nil {
-		fmt.Printf("Error: could not create edge collection 'steps': %v\n", err)
+		fmt.Printf("Error: could not create edge collection '%s': %v\n", name, err)
 		return err
 	}
 	return nil
