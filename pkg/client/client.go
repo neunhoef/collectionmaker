@@ -3,7 +3,7 @@ package client
 import (
 	"crypto/tls"
 	"github.com/arangodb/go-driver"
-	"github.com/arangodb/go-driver/http"
+	"github.com/arangodb/go-driver/vst"
 	"github.com/pkg/errors"
 	"net/url"
 )
@@ -26,10 +26,9 @@ func NewClient(endpoints []string, auth driver.Authentication) (driver.Client, e
 		//fmt.Printf("%d %s\n", i, endpoint)
 	}
 
-	conn, err := http.NewConnection(http.ConnectionConfig{
+	conn, err := vst.NewConnection(vst.ConnectionConfig{
 		Endpoints: endpoints,
 		TLSConfig: tlsConfig,
-		ConnLimit: 1024,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create connection")
