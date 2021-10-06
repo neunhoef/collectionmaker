@@ -169,13 +169,23 @@ func writeOnePart(partId string, vertexPayloadLength int, edgePayloadLength int,
 			To:       "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
 			Payload:  database.MakeRandomString(edgePayloadLength),
 		}
+		li1b := Link{
+			From:     "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
+			To:       "vertices/" + partId + ":K" + strconv.FormatInt(i, 10),
+			Payload:  database.MakeRandomString(edgePayloadLength),
+		}
 		j = ((rand.Uint64() % uint64(nr) + 1) &^ (tmp - 1)) | tmp
 		li2 := Link{
 			From:     "vertices/" + partId + ":K" + strconv.FormatInt(i, 10),
 			To:       "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
 			Payload:  database.MakeRandomString(edgePayloadLength),
 		}
-		lin = append(lin, li1, li2)
+		li2b := Link{
+			From:     "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
+			To:       "vertices/" + partId + ":K" + strconv.FormatInt(i, 10),
+			Payload:  database.MakeRandomString(edgePayloadLength),
+		}
+		lin = append(lin, li1, li1b, li2, li2b)
 		if len(lin) >= 3000 || i == nr {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 			_, _, err = links.CreateDocuments(ctx, lin)
