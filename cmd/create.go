@@ -20,4 +20,5 @@ func init() {
 	cmdCreate.AddCommand(cmdCreateEdgeCol)
 	cmdCreate.AddCommand(cmdCreateGraphCols)
 	cmdCreate.AddCommand(cmdCreateSmartGraphConnectedComponents)
+	cmdCreate.AddCommand(cmdCreateBatchImport)
 }
