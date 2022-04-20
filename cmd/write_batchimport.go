@@ -88,8 +88,9 @@ func writeSomeBatchesParallel(parallelism int, number int64, startDelay int64, p
 	wg.Wait()
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
+	batchesPerSec := float64(int64(parallelism) * number) / (float64(totaltime) / float64(time.Second))
 	docspersec := float64(int64(parallelism) * number * batchSize) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nTotal number of documents written: %d, total time: %v, total edges per second: %f\n", int64(parallelism) * number * batchSize, totaltimeend.Sub(totaltimestart), docspersec)
+	fmt.Printf("\nTotal number of documents written: %d, total time: %v, total batches per second: %f, total docs per second: %f\n", int64(parallelism) * number * batchSize, totaltimeend.Sub(totaltimestart), batchesPerSec, docspersec)
 	if !haveError {
 		return nil
 	}
@@ -107,6 +108,7 @@ func writeSomeBatches(nrBatches int64, id int64, payloadSize int64, batchSize in
 	docs := make([]Doc, 0, batchSize)
   times := make([]time.Duration, 0, batchSize)
 	cyclestart := time.Now()
+	last100start := cyclestart
 	for i := int64(1); i <= nrBatches; i++ {
 		start := time.Now()
     for j := int64(1); j <= batchSize; j++ {
@@ -128,8 +130,9 @@ func writeSomeBatches(nrBatches int64, id int64, payloadSize int64, batchSize in
 		docs = docs[0:0]
     times = append(times, time.Now().Sub(start))
 		if i % 100 == 0 {
+			dur := float64(time.Now().Sub(last100start)) / float64(time.Second)
 			mutex.Lock()
-			fmt.Printf("%s Have imported %d batches for id %d.\n", time.Now(), int(i), id)
+			fmt.Printf("%s Have imported %d batches for id %d, last 100 took %f seconds.\n", time.Now(), int(i), id, dur)
 			mutex.Unlock()
 		}
 	}
@@ -142,7 +145,7 @@ func writeSomeBatches(nrBatches int64, id int64, payloadSize int64, batchSize in
 	nrDocs := batchSize * nrBatches
 	docspersec := float64(nrDocs) / (float64(totaltime) / float64(time.Second))
 	mutex.Lock()
-	fmt.Printf("Times for %d batches: %s (median), %s (90%%ile), %s (99%%ilie), %s (average), docs per second in this go routine: %f\n", nrBatches, times[int(float64(0.5) * float64(nrBatches))], times[int(float64(0.9) * float64(nrBatches))], times[int(float64(0.99) * float64(nrBatches))], time.Duration(sum / nrBatches), docspersec)
+	fmt.Printf("Times for %d batches (per batch): %s (median), %s (90%%ile), %s (99%%ilie), %s (average), docs per second in this go routine: %f\n", nrBatches, times[int(float64(0.5) * float64(nrBatches))], times[int(float64(0.9) * float64(nrBatches))], times[int(float64(0.99) * float64(nrBatches))], time.Duration(sum / nrBatches), docspersec)
 	mutex.Unlock()
 	return nil
 }
