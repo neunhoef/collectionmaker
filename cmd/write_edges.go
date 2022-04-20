@@ -103,12 +103,12 @@ func writeSomeEdges(nrEdges int64, id string, db driver.Database, mutex *sync.Mu
 		fmt.Printf("writeSomeEdges: could not open `edges` collection: %v\n", err)
 		return err
 	}
-	eds := make([]Edge, 0, 1000)
-  times := make([]time.Duration, 0, 1000)
+	eds := make([]Edge, 0, 10000)
+  times := make([]time.Duration, 0, 10000)
 	cyclestart := time.Now()
-	for i := int64(1); i <= nrEdges / 1000; i++ {
+	for i := int64(1); i <= nrEdges / 10000; i++ {
 		start := time.Now()
-    for j := 1; j <= 1000; j++ {
+    for j := 1; j <= 10000; j++ {
 			fromUid := rand.Intn(10000)
 			toUid := rand.Intn(10000)
 			eds = append(eds, Edge{
@@ -120,8 +120,9 @@ func writeSomeEdges(nrEdges int64, id string, db driver.Database, mutex *sync.Mu
 					Last_modified: time.Now().Format(time.RFC3339),
 			})
 	  }
-		ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
-		_, err := edges.ImportDocuments(ctx, eds, &driver.ImportDocumentOptions{})
+		ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Hour)
+		// _, err := edges.ImportDocuments(ctx, eds, &driver.ImportDocumentOptions{})
+		_, _, err := edges.CreateDocuments(ctx, eds)
 		cancel()
 		if err != nil {
 			fmt.Printf("writeSomeEdges: could not write edges: %v\n", err)
@@ -130,7 +131,7 @@ func writeSomeEdges(nrEdges int64, id string, db driver.Database, mutex *sync.Mu
 		eds = eds[0:0]
 		if i % 100 == 0 {
 			mutex.Lock()
-			fmt.Printf("%s Have imported %d paths for id %s.\n", time.Now(), i * 1000, id)
+			fmt.Printf("%s Have imported %d paths for id %s.\n", time.Now(), i * 10000, id)
 			mutex.Unlock()
 		}
     times = append(times, time.Now().Sub(start))
@@ -141,9 +142,9 @@ func writeSomeEdges(nrEdges int64, id string, db driver.Database, mutex *sync.Mu
 				sum = sum + int64(t)
 			}
 			totaltime := time.Now().Sub(cyclestart)
-			docspersec := 100000.0 / (float64(totaltime) / float64(time.Second))
+			docspersec := 1000000.0 / (float64(totaltime) / float64(time.Second))
 			mutex.Lock()
-			fmt.Printf("Times for last 100 writes (=100000 edges): %s (median), %s (90%%ile), %s (99%%ilie), %s (average), edges per second in this go routine: %f\n", times[50], times[90], times[99], time.Duration(sum/100), docspersec)
+			fmt.Printf("Times for last 100 writes (=1000000 edges): %s (median), %s (90%%ile), %s (99%%ilie), %s (average), edges per second in this go routine: %f\n", times[50], times[90], times[99], time.Duration(sum/100), docspersec)
 			mutex.Unlock()
 			times = times[0:0]
 			cyclestart = time.Now()

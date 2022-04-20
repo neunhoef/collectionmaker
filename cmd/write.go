@@ -17,4 +17,5 @@ func init() {
 	cmdWrite.AddCommand(cmdWriteEdges)
 	cmdWrite.AddCommand(cmdElCheapoWrites)
 	cmdWrite.AddCommand(cmdWriteGraph)
+	cmdWrite.AddCommand(cmdWriteBatchImport)
 }
