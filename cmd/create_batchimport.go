@@ -20,10 +20,12 @@ func init() {
 	var drop = false
 	var replicationFactor int
 	var numberOfShards int
+	var collectionName string
 
 	cmdCreateBatchImport.Flags().BoolVar(&drop, "drop", drop, "set -drop to true to drop data before start")
 	cmdCreateBatchImport.Flags().IntVar(&replicationFactor, "replicationFactor", 3, "replication factor for edge collection")
 	cmdCreateBatchImport.Flags().IntVar(&numberOfShards, "numberOfShards", 1, "number of shards of batch import collection")
+	cmdCreateBatchImport.Flags().StringVar(&collectionName, "collection", "batchimport", "name of batch import collection")
 }
 
 func createBatchImport(cmd *cobra.Command, _ []string) error {
@@ -44,8 +46,9 @@ func createBatchImport(cmd *cobra.Command, _ []string) error {
 func setupBatchImport(cmd *cobra.Command, drop bool, db driver.Database) error {
 	replicationFactor, _ := cmd.Flags().GetInt("replicationFactor")
 	numberOfShards, _ := cmd.Flags().GetInt("numberOfShards")
+	collectionName, _ := cmd.Flags().GetString("collection")
 
-	ec, err := db.Collection(nil, "batchimport")
+	ec, err := db.Collection(nil, collectionName)
 	if err == nil {
 		if !drop {
 			fmt.Printf("Found batchimport collection already, setup is already done.\n")
@@ -62,7 +65,7 @@ func setupBatchImport(cmd *cobra.Command, drop bool, db driver.Database) error {
 	}
 
 	// Now create the batchimport collection:
-	_, err = db.CreateCollection(nil, "batchimport", &driver.CreateCollectionOptions{
+	_, err = db.CreateCollection(nil, collectionName, &driver.CreateCollectionOptions{
 			Type: driver.CollectionTypeDocument,
 			NumberOfShards: numberOfShards,
 			ReplicationFactor: replicationFactor,
