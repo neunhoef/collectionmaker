@@ -57,28 +57,28 @@ type Doc struct {
 }
 
 // makeRandomPolygon makes a random GeoJson polygon.
-func makeRandomPolygon() *Poly {
+func makeRandomPolygon(source *rand.Rand) *Poly {
 	ret := Poly{ Type: "polygon", Coordinates: make([]Point, 0, 5) }
 	for i := 1; i <= 4 ; i += 1 {
 		ret.Coordinates = append(ret.Coordinates,
-			Point{ rand.Float64() * 300.0 - 90.0, rand.Float64() * 160.0 - 80.0})
+			Point{ source.Float64() * 300.0 - 90.0, source.Float64() * 160.0 - 80.0})
 	}
 	return &ret
 }
 
 // makeRandomStringWithSpaces creates slice of bytes for the provided length.
 // Each byte is in range from 33 to 123.
-func makeRandomStringWithSpaces(length int) string {
+func makeRandomStringWithSpaces(length int, source *rand.Rand) string {
 	b := make([]byte, length, length)
 
-	wordlen := rand.Int()%17 + 3
+	wordlen := source.Int()%17 + 3
 	for i := 0; i < length; i++ {
 		wordlen -= 1
 		if wordlen == 0 {
-			wordlen = rand.Int()%17 + 3
+			wordlen = source.Int()%17 + 3
 			b[i] = byte(32)
 	  } else {
-			s := rand.Int()%52 + 65
+			s := source.Int()%52 + 65
 			if s >= 91 {
 				s += 6
 		  }
@@ -88,13 +88,13 @@ func makeRandomStringWithSpaces(length int) string {
 	return string(b)
 }
 
-func makeRandomWords(nr int) string {
+func makeRandomWords(nr int, source *rand.Rand) string {
   b := make([]byte, 0, 15 * nr)
 	for i := 1; i <= nr; i += 1 {
     if i > 1 {
 			b = append(b, ' ')
 		}
-		b = append(b, []byte(wordList[rand.Int()%len(wordList)])...)
+		b = append(b, []byte(wordList[source.Int()%len(wordList)])...)
 	}
 	return string(b)
 }
@@ -190,6 +190,7 @@ func writeSomeBatches(nrBatches int64, id int64, payloadSize int64, batchSize in
   times := make([]time.Duration, 0, batchSize)
 	cyclestart := time.Now()
 	last100start := cyclestart
+	source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
 	for i := int64(1); i <= nrBatches; i++ {
 		start := time.Now()
     for j := int64(1); j <= batchSize; j++ {
@@ -197,14 +198,14 @@ func writeSomeBatches(nrBatches int64, id int64, payloadSize int64, batchSize in
 			key := fmt.Sprintf("%x", sha256.Sum256([]byte(x)))
 			x = "SHA" + x
 			sha := fmt.Sprintf("%x", sha256.Sum256([]byte(x)))
-			pay := makeRandomStringWithSpaces(int(payloadSize))
+			pay := makeRandomStringWithSpaces(int(payloadSize), source)
 			var poly *Poly
 			if withGeo {
-        poly = makeRandomPolygon()
+        poly = makeRandomPolygon(source)
 			}
 			var words string
 			if withWords > 0 {
-				words = makeRandomWords(withWords)
+				words = makeRandomWords(withWords, source)
 		  }
 			docs = append(docs, Doc{
 				Key: key, Sha: sha, Payload: pay, Geo: poly, Words: words })
