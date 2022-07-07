@@ -147,7 +147,7 @@ func writeSomeBatchesParallel(parallelism int, number int64, startDelay int64, p
 	totaltimestart := time.Now()
 	wg := sync.WaitGroup{}
 	haveError := false
-	for i := 1; i <= parallelism; i++ {
+	for i := 0; i <= parallelism - 1; i++ {
 	  time.Sleep(time.Duration(startDelay) * time.Millisecond)
 		i := i // bring into scope
 		wg.Add(1)
@@ -194,7 +194,8 @@ func writeSomeBatches(nrBatches int64, id int64, payloadSize int64, batchSize in
 	for i := int64(1); i <= nrBatches; i++ {
 		start := time.Now()
     for j := int64(1); j <= batchSize; j++ {
-			x := fmt.Sprintf("%d", (id * nrBatches + i - 1) * batchSize + j)
+			which := (id * nrBatches + i - 1) * batchSize + j - 1
+			x := fmt.Sprintf("%d", which)
 			key := fmt.Sprintf("%x", sha256.Sum256([]byte(x)))
 			x = "SHA" + x
 			sha := fmt.Sprintf("%x", sha256.Sum256([]byte(x)))
