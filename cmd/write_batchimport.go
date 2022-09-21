@@ -108,6 +108,7 @@ func init() {
 	var collectionName string = "batchimport"
 	var withGeo = true
 	var withWords = 5
+	var keySize int = 64
 	cmdWriteBatchImport.Flags().IntVar(&parallelism, "parallelism", parallelism, "set -parallelism to use multiple go routines")
 	cmdWriteBatchImport.Flags().Int64Var(&number, "number", number, "set -number for number of edges to write per go routine")
 	cmdWriteBatchImport.Flags().Int64Var(&startDelay, "start-delay", startDelay, "Delay between the start of two go routines.")
@@ -116,6 +117,7 @@ func init() {
 	cmdWriteBatchImport.Flags().StringVar(&collectionName, "collection", collectionName, "Name of batch import collection.")
 	cmdWriteBatchImport.Flags().BoolVar(&withGeo, "with-geo", withGeo, "Add some geo data to `geo` attribute.")
 	cmdWriteBatchImport.Flags().IntVar(&withWords, "with-words", withWords, "Add so many words to `words` attribute.")
+	cmdWriteBatchImport.Flags().IntVar(&keySize, "key-size", keySize, "Take a prefix of that many bytes from the sha256 as key.")
 }
 
 // writeBatchImport writes edges in parallel
@@ -128,13 +130,17 @@ func writeBatchImport(cmd *cobra.Command, _ []string) error {
 	collectionName, _ := cmd.Flags().GetString("collection")
 	withGeo, _ := cmd.Flags().GetBool("with-geo")
 	withWords, _ := cmd.Flags().GetInt("with-words")
+	keySize, _ := cmd.Flags().GetInt("key-size")
+	if keySize < 1 || keySize > 64 {
+		keySize = 64
+  }
 
 	db, err := _client.Database(context.Background(), "_system")
 	if err != nil {
 		return errors.Wrapf(err, "can not get database: %s", "_system")
 	}
 
-	if err := writeSomeBatchesParallel(parallelism, number, startDelay, payloadSize, batchSize, collectionName, withGeo, withWords, db); err != nil {
+	if err := writeSomeBatchesParallel(parallelism, number, startDelay, payloadSize, batchSize, collectionName, withGeo, withWords, keySize, db); err != nil {
 		return errors.Wrapf(err, "can not do some batch imports")
 	}
 
@@ -142,7 +148,7 @@ func writeBatchImport(cmd *cobra.Command, _ []string) error {
 }
 
 // writeSomeBatchesParallel does some batch imports in parallel
-func writeSomeBatchesParallel(parallelism int, number int64, startDelay int64, payloadSize int64, batchSize int64, collectionName string, withGeo bool, withWords int, db driver.Database) error {
+func writeSomeBatchesParallel(parallelism int, number int64, startDelay int64, payloadSize int64, batchSize int64, collectionName string, withGeo bool, withWords int, keySize int, db driver.Database) error {
 	var mutex sync.Mutex
 	totaltimestart := time.Now()
 	wg := sync.WaitGroup{}
@@ -155,7 +161,7 @@ func writeSomeBatchesParallel(parallelism int, number int64, startDelay int64, p
 		go func(wg *sync.WaitGroup, i int) {
 			defer wg.Done()
 			fmt.Printf("Starting go routine...\n")
-			err := writeSomeBatches(number, int64(i), payloadSize, batchSize, collectionName, withGeo, withWords, db, &mutex)
+			err := writeSomeBatches(number, int64(i), payloadSize, batchSize, collectionName, withGeo, withWords, keySize, db, &mutex)
 			if err != nil {
 				fmt.Printf("writeSomeBatches error: %v\n", err)
 				haveError = true
@@ -180,7 +186,7 @@ func writeSomeBatchesParallel(parallelism int, number int64, startDelay int64, p
 }
 
 // writeSomeBatches writes `nrBatches` batches with `batchSize` documents.
-func writeSomeBatches(nrBatches int64, id int64, payloadSize int64, batchSize int64, collectionName string, withGeo bool, withWords int, db driver.Database, mutex *sync.Mutex) error {
+func writeSomeBatches(nrBatches int64, id int64, payloadSize int64, batchSize int64, collectionName string, withGeo bool, withWords int, keySize int, db driver.Database, mutex *sync.Mutex) error {
 	edges, err := db.Collection(nil, collectionName)
 	if err != nil {
 		fmt.Printf("writeSomeBatches: could not open `%s` collection: %v\n", collectionName, err)
@@ -209,7 +215,7 @@ func writeSomeBatches(nrBatches int64, id int64, payloadSize int64, batchSize in
 				words = makeRandomWords(withWords, source)
 		  }
 			docs = append(docs, Doc{
-				Key: key, Sha: sha, Payload: pay, Geo: poly, Words: words })
+				Key: key[0:keySize], Sha: sha, Payload: pay, Geo: poly, Words: words })
 	  }
 		ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Hour)
 		_, _, err := edges.CreateDocuments(ctx, docs)
