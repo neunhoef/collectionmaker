@@ -217,7 +217,7 @@ func writeSomeBatches(nrBatches int64, id int64, payloadSize int64, batchSize in
 			docs = append(docs, Doc{
 				Key: key[0:keySize], Sha: sha, Payload: pay, Geo: poly, Words: words })
 	  }
-		ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Hour)
+		ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeReplace), time.Hour)
 		_, _, err := edges.CreateDocuments(ctx, docs)
 		cancel()
 		if err != nil {
