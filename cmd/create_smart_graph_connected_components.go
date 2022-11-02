@@ -9,16 +9,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arangodb/go-driver"
 	"github.com/neunhoef/collectionmaker/pkg/database"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+
+	"github.com/arangodb/go-driver"
 )
 
 const (
-  defaultNumberOfParts = 12
-	defaultVertexPayloadLength = 16
-	defaultEdgePayloadLength = 16
+	defaultNumberOfParts        = 12
+	defaultVertexPayloadLength  = 16
+	defaultEdgePayloadLength    = 16
 	defaultLog2NumberOfVertices = 20
 )
 
@@ -37,22 +38,24 @@ type Vertex struct {
 }
 
 type Link struct {
-  Key      string `json:"_key,omitempty"`
-	From     string `json:"_from"`
-	To       string `json:"_to"`
-	Payload  string `json:"payload"`
+	Key     string `json:"_key,omitempty"`
+	From    string `json:"_from"`
+	To      string `json:"_to"`
+	Payload string `json:"payload"`
 }
 
 func smartGraphFlags(command *cobra.Command) {
 	var numberOfParts, vertexPayloadLength, edgePayloadLength int
 	var log2NumberOfVertices int
 	var parallelism int
+	var numberOfShards int
 
 	command.Flags().IntVar(&numberOfParts, "numberOfParts", defaultNumberOfParts, "Number of parts of graph to create")
 	command.Flags().IntVar(&vertexPayloadLength, "vertexPayloadLength", defaultVertexPayloadLength, "Size in bytes of payload for vertices")
 	command.Flags().IntVar(&edgePayloadLength, "edgePayloadLength", defaultEdgePayloadLength, "Size in bytes of payload for edges")
 	command.Flags().IntVar(&log2NumberOfVertices, "log2NumberOfVertices", defaultLog2NumberOfVertices, "Log 2 of number of vertices in each part")
 	command.Flags().IntVar(&parallelism, "parallelism", 1, "Number of go routines")
+	command.Flags().IntVar(&numberOfShards, "shards", 3, "Number of shards")
 }
 
 func init() {
@@ -69,13 +72,14 @@ func createSmartGraph(cmd *cobra.Command, _ []string) error {
 	edgePayloadLength, _ := cmd.Flags().GetInt("edgePayloadLength")
 	log2NumberOfVertices, _ := cmd.Flags().GetInt("log2NumberOfVertices")
 	parallelism, _ := cmd.Flags().GetInt("parallelism")
+	numberOfShards, _ := cmd.Flags().GetInt("shards")
 
 	db, err := _client.Database(context.Background(), "_system")
 	if err != nil {
 		return errors.Wrapf(err, "can not get database: %s", "_system")
 	}
 
-	if setupSmart(drop, db) != nil {
+	if setupSmart(drop, db, numberOfShards) != nil {
 		return errors.Wrapf(err, "setup was already launched")
 	}
 
@@ -135,14 +139,14 @@ func writeOnePart(partId string, vertexPayloadLength int, edgePayloadLength int,
 	var nr int64 = 1
 	for j := 1; j <= log2NumberOfVertices; j++ {
 		nr *= 2
-  }
+	}
 	var i int64 = 0
 	for i = 1; i <= nr; i++ {
 		n := strconv.FormatInt(int64(i), 10)
 		v := Vertex{
-			Key:      partId + ":K" + n,
+			Key:       partId + ":K" + n,
 			SmartPart: partId,
-			Payload:  database.MakeRandomString(vertexPayloadLength),
+			Payload:   database.MakeRandomString(vertexPayloadLength),
 		}
 		ver = append(ver, v)
 		if len(ver) >= 3000 || i == nr {
@@ -156,34 +160,34 @@ func writeOnePart(partId string, vertexPayloadLength int, edgePayloadLength int,
 			ver = ver[0:0]
 			fmt.Printf("%s Have imported %d vertices for part %s.\n", time.Now(), i, partId)
 			cancel()
-	  }
-  }
+		}
+	}
 	// Now create two edges for each vertex:
 	lin := make([]Link, 0, 3000)
 	for i = 1; i <= nr; i++ {
 		comp := bits.TrailingZeros64(uint64(i))
 		tmp := uint64(1) << comp
-		j := ((rand.Uint64() % uint64(nr) + 1) &^ (tmp - 1)) | tmp
+		j := ((rand.Uint64()%uint64(nr) + 1) &^ (tmp - 1)) | tmp
 		li1 := Link{
-			From:     "vertices/" + partId + ":K" + strconv.FormatInt(i, 10),
-			To:       "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
-			Payload:  database.MakeRandomString(edgePayloadLength),
+			From:    "vertices/" + partId + ":K" + strconv.FormatInt(i, 10),
+			To:      "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
+			Payload: database.MakeRandomString(edgePayloadLength),
 		}
 		li1b := Link{
-			From:     "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
-			To:       "vertices/" + partId + ":K" + strconv.FormatInt(i, 10),
-			Payload:  database.MakeRandomString(edgePayloadLength),
+			From:    "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
+			To:      "vertices/" + partId + ":K" + strconv.FormatInt(i, 10),
+			Payload: database.MakeRandomString(edgePayloadLength),
 		}
-		j = ((rand.Uint64() % uint64(nr) + 1) &^ (tmp - 1)) | tmp
+		j = ((rand.Uint64()%uint64(nr) + 1) &^ (tmp - 1)) | tmp
 		li2 := Link{
-			From:     "vertices/" + partId + ":K" + strconv.FormatInt(i, 10),
-			To:       "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
-			Payload:  database.MakeRandomString(edgePayloadLength),
+			From:    "vertices/" + partId + ":K" + strconv.FormatInt(i, 10),
+			To:      "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
+			Payload: database.MakeRandomString(edgePayloadLength),
 		}
 		li2b := Link{
-			From:     "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
-			To:       "vertices/" + partId + ":K" + strconv.FormatInt(i, 10),
-			Payload:  database.MakeRandomString(edgePayloadLength),
+			From:    "vertices/" + partId + ":K" + strconv.FormatInt(int64(j), 10),
+			To:      "vertices/" + partId + ":K" + strconv.FormatInt(i, 10),
+			Payload: database.MakeRandomString(edgePayloadLength),
 		}
 		lin = append(lin, li1, li1b, li2, li2b)
 		if len(lin) >= 3000 || i == nr {
@@ -204,7 +208,7 @@ func writeOnePart(partId string, vertexPayloadLength int, edgePayloadLength int,
 
 // setup will set up a disjoint smart graph, if the smart graph is already
 // there, it will not complain.
-func setupSmart(drop bool, db driver.Database) error {
+func setupSmart(drop bool, db driver.Database, numberOfShards int) error {
 	sg, err := db.Graph(nil, "SmartGraph")
 	if err == nil {
 		if !drop {
@@ -248,7 +252,7 @@ func setupSmart(drop bool, db driver.Database) error {
 		}},
 		IsSmart:             true,
 		SmartGraphAttribute: "smartPart",
-		NumberOfShards:      3,
+		NumberOfShards:      numberOfShards,
 		ReplicationFactor:   3,
 		IsDisjoint:          true,
 	})

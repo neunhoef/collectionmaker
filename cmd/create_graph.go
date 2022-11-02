@@ -3,13 +3,15 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/arangodb/go-driver"
-	"github.com/neunhoef/collectionmaker/pkg/database"
-	"github.com/pkg/errors"
-	"github.com/spf13/cobra"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/neunhoef/collectionmaker/pkg/database"
+	"github.com/pkg/errors"
+	"github.com/spf13/cobra"
+
+	"github.com/arangodb/go-driver"
 )
 
 const (
@@ -35,7 +37,7 @@ type Instance struct {
 }
 
 type Step struct {
-  Key      string `json:"_key,omitempty"`
+	Key      string `json:"_key,omitempty"`
 	TenantId string `json:"tenantId"`
 	From     string `json:"_from"`
 	To       string `json:"_to"`
@@ -43,12 +45,13 @@ type Step struct {
 }
 
 func commonGraphFlags(command *cobra.Command) {
-	var firstTenant, lastTenant, nrPathsPerTenant, parallelism int
+	var firstTenant, lastTenant, nrPathsPerTenant, parallelism, numberOfShards int
 
 	command.Flags().IntVar(&firstTenant, "firstTenant", 1, "Index of first tenant to create")
 	command.Flags().IntVar(&lastTenant, "lastTenant", 3000, "Index of last tenant to create")
 	command.Flags().IntVar(&nrPathsPerTenant, "nrPathsPerTenant", 10000, "Number of paths per tenant")
 	command.Flags().IntVar(&parallelism, "parallelism", 4, "Parallelism")
+	command.Flags().IntVar(&numberOfShards, "shards", 3, "Number of shards")
 }
 
 func init() {
@@ -64,13 +67,14 @@ func createGraph(cmd *cobra.Command, _ []string) error {
 	lastTenant, _ := cmd.Flags().GetInt("lastTenant")
 	nrPathsPerTenant, _ := cmd.Flags().GetInt("nrPathsPerTenant")
 	parallelism, _ := cmd.Flags().GetInt("parallelism")
+	numberOfShards, _ := cmd.Flags().GetInt("shards")
 
 	db, err := _client.Database(context.Background(), "_system")
 	if err != nil {
 		return errors.Wrapf(err, "can not get database: %s", "_system")
 	}
 
-	if setup(drop, db) != nil {
+	if setup(drop, db, numberOfShards) != nil {
 		return errors.Wrapf(err, "setup was already launched")
 	}
 
@@ -185,7 +189,7 @@ func writeOneTenant(nrPaths int, tenantId string, db driver.Database) error {
 
 // setup will set up a disjoint smart graph, if the smart graph is already
 // there, it will not complain.
-func setup(drop bool, db driver.Database) error {
+func setup(drop bool, db driver.Database, numberOfShards int) error {
 	sg, err := db.Graph(nil, "Graph")
 	if err == nil {
 		if !drop {
@@ -229,7 +233,7 @@ func setup(drop bool, db driver.Database) error {
 		}},
 		IsSmart:             true,
 		SmartGraphAttribute: "tenantId",
-		NumberOfShards:      3,
+		NumberOfShards:      numberOfShards,
 		ReplicationFactor:   3,
 		IsDisjoint:          true,
 	})
